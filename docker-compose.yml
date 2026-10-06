@@ -1,0 +1,26 @@
+services:
+  museum-transport:
+    build: .
+    image: museum-transport-risk:1.0
+    container_name: museum-transport-risk
+    ports:
+      - "8000:8000"
+    environment:
+      # SQLite 持久化到挂载卷；亦可改为其它 SQLAlchemy 连接串
+      DATABASE_URL: "sqlite:////data/museum_transport.db"
+      DATA_DIR: "/data"
+      # 首次启动写入演示批次 B-2026-001；置为 false 可获得空系统
+      SEED_DEMO: "true"
+      APP_HOST: "0.0.0.0"
+      APP_PORT: "8000"
+    volumes:
+      - museum_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz').status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  museum_data:

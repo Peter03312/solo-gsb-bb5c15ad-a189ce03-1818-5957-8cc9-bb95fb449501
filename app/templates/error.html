@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ status }} 错误{% endblock %}
+{% block content %}
+<div class="card error-page">
+  <h1>⛔ {{ status }}</h1>
+  <p class="err-text">{{ message }}</p>
+  <p><a class="btn" href="/">返回批次列表</a>
+     <a class="btn ghost" href="{{ api_docs }}" target="_blank">查看 API 文档</a></p>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>运输批次</h1>
+
+{% if error %}<div class="alert err">⛔ {{ error }}</div>{% endif %}
+{% if ok %}<div class="alert ok">✅ {{ ok }}</div>{% endif %}
+
+<section class="card">
+  <h2>新建批次</h2>
+  <form method="post" action="/batches" class="grid-form">
+    <label>批次编号 <input name="batch_no" required placeholder="B-2026-002"></label>
+    <label>批次名称 <input name="name" required placeholder="XX 博物馆借展运输"></label>
+    <label>借展方 <input name="borrower" placeholder="借展博物馆名称"></label>
+    <label class="span2">说明 <input name="description" placeholder="运输范围、展品概况等"></label>
+    <button type="submit">创建批次</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2>批次风险摘要</h2>
+  {% if rows %}
+  <table>
+    <thead><tr>
+      <th>批次编号</th><th>名称</th><th>借展方</th><th>文物/节点</th>
+      <th>当前版本</th><th>读数</th><th>待处置事件</th><th>已关闭</th>
+      <th>跨节点</th><th>缺测区间</th><th>操作</th>
+    </tr></thead>
+    <tbody>
+    {% for b, s in rows %}
+    <tr>
+      <td><strong>{{ b.batch_no }}</strong></td>
+      <td>{{ b.name }}</td>
+      <td>{{ b.borrower }}</td>
+      <td>{{ s.artifact_count }} / {{ s.node_count }}</td>
+      <td>{% if s.version_no %}<span class="tag">V{{ s.version_no }}</span>{% else %}<span class="muted">尚未评估</span>{% endif %}</td>
+      <td>{{ s.reading_total }}</td>
+      <td>{% if s.event_open %}<span class="badge danger">{{ s.event_open }}</span>{% else %}0{% endif %}</td>
+      <td>{{ s.event_closed }}</td>
+      <td>{{ s.event_cross_node }}</td>
+      <td>{{ s.gap_total }}</td>
+      <td><a class="btn small" href="/batches/{{ b.id }}">进入</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">暂无批次。上方创建第一个借展运输批次；首次启动已内置演示批次 B-2026-001（如未显示请检查 SEED_DEMO 配置）。</p>
+  {% endif %}
+</section>
+{% endblock %}

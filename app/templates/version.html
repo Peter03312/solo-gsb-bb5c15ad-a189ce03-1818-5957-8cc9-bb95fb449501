@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}V{{ version.version_no }} · {{ batch.batch_no }}{% endblock %}
+{% block content %}
+<a href="/batches/{{ batch.id }}" class="back">← 返回 {{ batch.batch_no }}</a>
+<h1>评估版本 V{{ version.version_no }}
+  <span class="tag">{{ {'initial':'初始录入','supplement':'补录','correction':'更正'}[version.change_type] }}</span>
+  {% if version.is_current %}<span class="tag ok">当前版本</span>{% else %}<span class="tag warn">历史归档（只读留痕）</span>{% endif %}
+</h1>
+<p class="muted">提交人：{{ version.created_by }} ｜ 提交时间：{{ fmt_ts(version.created_at) }}
+  {% if version.remark %}<br>备注：{{ version.remark }}{% endif %}</p>
+
+{% if close_error and close_error[1] %}
+<div class="alert err">⛔ 事件 #{{ close_error[1] }} 关闭被拒绝：{{ close_error[0] }}</div>
+{% endif %}
+
+<section class="card">
+  <h2>风险事件（{{ version.events | length }}）
+    <span class="muted">待处置 {{ version.events | selectattr('status','equalto','open') | list | length }}
+    ｜已关闭 {{ version.events | selectattr('status','equalto','closed') | list | length }}</span>
+  </h2>
+  {% if version.events %}
+  {% for e in events %}
+  <div class="event {% if e.status == 'closed' %}closed{% else %}open{% endif %}" id="event-{{ e.id }}">
+    <div class="event-head">
+      <h3>事件 #{{ e.event_no }}：{{ METRIC_LABELS[e.metric] }}
+        {{ '超上限' if e.peak_direction == 'high' else '低于下限' }}
+        {% if e.status == 'closed' %}<span class="badge ok">已关闭</span>{% else %}<span class="badge danger">待处置</span>{% endif %}
+        {% if e.cross_node %}<span class="tag">跨节点合并</span>{% endif %}
+        {% if e.interrupted %}<span class="tag warn">缺测中断</span>{% endif %}
+      </h3>
+    </div>
+    <table class="kv">
+      <tr><th>文物</th><td>{{ artifact_map[e.artifact_id].code if e.artifact_id in artifact_map else e.artifact_id }} {{ artifact_map[e.artifact_id].name if e.artifact_id in artifact_map }}</td><th>峰值</th><td>{{ e.peak_value }}（超出 {{ '%.2f'|format(e.peak_deviation) }}）</td></tr>
+      <tr><th>起</th><td>{{ fmt_ts(e.start_ts) }} ｜ {{ e.start_node.name }}</td>
+          <th>止</th><td>{{ fmt_ts(e.end_ts) }} ｜ {{ e.end_node.name }}</td></tr>
+      <tr><th>越限读数</th><td>{{ e.reading_count }} 条连续读数</td><th>所属版本</th><td>V{{ version.version_no }}</td></tr>
+      {% if e.status == 'closed' %}
+      <tr><th>处置说明</th><td colspan="3">{{ e.disposition }}</td></tr>
+      <tr><th>证据编号</th><td>{{ e.evidence_no }}</td><th>处置人/时间</th><td>{{ e.closed_by }} ｜ {{ fmt_ts(e.closed_at) }}</td></tr>
+      {% endif %}
+    </table>
+
+    <details class="readings">
+      <summary>查看构成事件的 {{ e.reading_count }} 条越限读数</summary>
+      <table>
+        <thead><tr><th>时间(UTC)</th><th>节点</th><th>指标</th><th>数值</th></tr></thead>
+        <tbody>
+        {% for r in e.readings | sort(attribute='ts') %}
+        <tr><td>{{ fmt_ts(r.ts) }}</td><td>{{ node_map[r.node_id].name if r.node_id in node_map else r.node_id }}</td>
+          <td>{{ METRIC_LABELS[r.metric] }}</td><td>{{ r.value }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </details>
+
+    {% if e.status == 'open' %}
+    <form method="post" action="/events/{{ e.id }}/close" class="close-form">
+      <label>处置说明（必填）
+        <textarea name="disposition" rows="2" required placeholder="说明现场处置过程、文物状态复查结论等"></textarea>
+      </label>
+      <div class="row2">
+        <label>证据编号（必填） <input name="evidence_no" required placeholder="EV-20261001-07"></label>
+        <label>处置人 <input name="closed_by" value="工作人员"></label>
+      </div>
+      <button type="submit" class="danger-btn">填写处置并关闭事件</button>
+      <span class="hint">关闭后结论在 V{{ version.version_no }} 中永久留痕；新版本中的同位置事件不会自动继承关闭状态。</span>
+    </form>
+    {% endif %}
+  </div>
+  {% endfor %}
+  {% else %}<p class="muted">本版本未检出越限风险事件。</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>缺测区间（{{ version.gaps | length }}）</h2>
+  {% if version.gaps %}
+  <table>
+    <thead><tr><th>文物</th><th>指标</th><th>缺口起(UTC)</th><th>缺口止(UTC)</th>
+      <th>实际间隔</th><th>约定间隔</th><th>节点</th><th>影响</th></tr></thead>
+    <tbody>
+    {% for g in gaps %}
+    <tr>
+      <td>{{ artifact_map[g.artifact_id].code if g.artifact_id in artifact_map else g.artifact_id }}</td><td>{{ METRIC_LABELS[g.metric] }}</td>
+      <td>{{ fmt_ts(g.gap_start_ts) }}</td><td>{{ fmt_ts(g.gap_end_ts) }}</td>
+      <td><strong>{{ interval_human(g.gap_seconds) }}</strong></td>
+      <td>{{ interval_human(g.interval_seconds) }}</td>
+      <td>{{ node_map[g.start_node_id].name if g.start_node_id in node_map else g.start_node_id }}{% if g.cross_node %} → {{ node_map[g.end_node_id].name if g.end_node_id in node_map else g.end_node_id }}（跨节点）{% endif %}</td>
+      <td>{% if g.interrupted_event %}<span class="tag warn">已中断越限事件</span>{% else %}记录缺测{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p class="muted">无超过采样间隔的缺测区间。</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>读数明细（{{ version.readings | length }}）</h2>
+  <table>
+    <thead><tr><th>时间(UTC)</th><th>文物</th><th>节点</th><th>指标</th>
+      <th>数值</th><th>来源</th><th>关联事件</th></tr></thead>
+    <tbody>
+    {% for r in readings %}
+    <tr {% if r.source == 'correction' %}class="row-corr"{% elif r.source == 'supplement' %}class="row-supp"{% endif %}>
+      <td>{{ fmt_ts(r.ts) }}</td><td>{{ artifact_map[r.artifact_id].code if r.artifact_id in artifact_map else r.artifact_id }}</td><td>{{ node_map[r.node_id].name if r.node_id in node_map else r.node_id }}</td>
+      <td>{{ METRIC_LABELS[r.metric] }}</td><td>{{ r.value }}</td>
+      <td>{{ {'original':'原始','supplement':'补录','correction':'更正'}[r.source] }}
+        {% if r.ref_reading_id %}<span class="muted">（替换读数 #{{ r.ref_reading_id }}）</span>{% endif %}</td>
+      <td>{% if r.event_id %}<a href="#event-{{ r.event_id }}">#{{ r.event_id }}</a>{% else %}—{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

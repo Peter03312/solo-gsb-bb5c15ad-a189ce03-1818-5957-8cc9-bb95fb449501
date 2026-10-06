@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}借展运输风险核验{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap nav">
+    <a class="brand" href="/">🏛 借展运输环境风险核验系统</a>
+    <nav>
+      <a href="/">批次</a>
+      <a href="/api/docs" target="_blank">API 文档</a>
+      <a href="/healthz" target="_blank">健康检查</a>
+    </nav>
+  </div>
+</header>
+<main class="wrap">
+{% block content %}{% endblock %}
+</main>
+<footer class="wrap foot">
+  <span>博物馆借展运输温湿度风险核验 · 评估版本全程留痕 · 旧版读数与关闭结论永久可查</span>
+</footer>
+</body>
+</html>

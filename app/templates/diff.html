@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}版本差异 · {{ batch.batch_no }}{% endblock %}
+{% block content %}
+<a href="/batches/{{ batch.id }}" class="back">← 返回 {{ batch.batch_no }}</a>
+<h1>评估版本间差异</h1>
+
+{% if error %}<div class="alert err">⛔ {{ error }}</div>{% endif %}
+
+<form method="get" class="inline-form card">
+  <label>基准版本
+    <select name="base_no">
+      {% for v in versions %}<option value="{{ v.version_no }}"
+        {% if diff and diff.base.version_no == v.version_no %}selected{% endif %}>V{{ v.version_no }}（{{ {'initial':'初始','supplement':'补录','correction':'更正'}[v.change_type] }}）</option>{% endfor %}
+    </select>
+  </label>
+  <label>对比版本
+    <select name="target_no">
+      {% for v in versions %}<option value="{{ v.version_no }}"
+        {% if diff and diff.new.version_no == v.version_no %}selected{% endif %}>V{{ v.version_no }}（{{ {'initial':'初始','supplement':'补录','correction':'更正'}[v.change_type] }}）</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">比较</button>
+</form>
+
+{% if diff %}
+<section class="card">
+  <h2>V{{ diff.base.version_no }} → V{{ diff.new.version_no }}
+    <span class="tag">{{ {'initial':'初始录入','supplement':'补录','correction':'更正'}[diff.new.change_type] }}</span>
+  </h2>
+
+  <h3>读数差异</h3>
+  <div class="stat-row">
+    <div class="stat"><span class="num plus">{{ diff.readings_added | length }}</span><span>新增/补录</span></div>
+    <div class="stat"><span class="num minus">{{ diff.readings_removed | length }}</span><span>移除</span></div>
+    <div class="stat"><span class="num warn-num">{{ diff.readings_changed | length }}</span><span>更正（同时间点）</span></div>
+  </div>
+
+  {% if diff.readings_changed %}
+  <h4>更正明细（旧值 → 新值）</h4>
+  <table>
+    <thead><tr><th>时间(UTC)</th><th>文物</th><th>指标</th><th>节点</th><th>旧值</th><th>新值</th></tr></thead>
+    <tbody>
+    {% for old, new in diff.readings_changed %}
+    <tr>
+      <td>{{ fmt_ts(new.ts) }}</td><td>{{ artifact_map[new.artifact_id].code if new.artifact_id in artifact_map else new.artifact_id }}</td>
+      <td>{{ METRIC_LABELS[new.metric] }}</td>
+      <td>{{ node_map[old.node_id].name if old.node_id in node_map else old.node_id }} → {{ node_map[new.node_id].name if new.node_id in node_map else new.node_id }}</td>
+      <td class="minus">{{ old.value }}</td>
+      <td class="plus"><strong>{{ new.value }}</strong></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+
+  {% if diff.readings_added %}
+  <h4>新增/补录读数</h4>
+  <table>
+    <thead><tr><th>时间(UTC)</th><th>文物</th><th>节点</th><th>指标</th><th>数值</th><th>来源</th></tr></thead>
+    <tbody>{% for r in diff.readings_added %}
+    <tr><td>{{ fmt_ts(r.ts) }}</td><td>{{ artifact_map[r.artifact_id].code if r.artifact_id in artifact_map else r.artifact_id }}</td><td>{{ node_map[r.node_id].name if r.node_id in node_map else r.node_id }}</td>
+      <td>{{ METRIC_LABELS[r.metric] }}</td><td class="plus">{{ r.value }}</td>
+      <td>{{ {'original':'原始','supplement':'补录','correction':'更正'}[r.source] }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+
+  {% if diff.readings_removed %}
+  <h4>移除读数（仅存在于旧版，旧版仍可查）</h4>
+  <table>
+    <thead><tr><th>时间(UTC)</th><th>文物</th><th>节点</th><th>指标</th><th>数值</th></tr></thead>
+    <tbody>{% for r in diff.readings_removed %}
+    <tr><td>{{ fmt_ts(r.ts) }}</td><td>{{ artifact_map[r.artifact_id].code if r.artifact_id in artifact_map else r.artifact_id }}</td><td>{{ node_map[r.node_id].name if r.node_id in node_map else r.node_id }}</td>
+      <td>{{ METRIC_LABELS[r.metric] }}</td><td class="minus">{{ r.value }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+
+  <h3>风险事件对比（事件按版本独立重算，关闭状态不继承）</h3>
+  <div class="stat-row">
+    <div class="stat danger"><span class="num">{{ diff.events_added | length }}</span><span>新版新增事件（均待处置）</span></div>
+    <div class="stat"><span class="num">{{ diff.events_removed | length }}</span><span>旧版事件（本版消失）</span></div>
+    <div class="stat"><span class="num">{{ diff.events_common | length }}</span><span>两版时间区间一致</span></div>
+  </div>
+  {% if diff.events_added %}
+  <table>
+    <thead><tr><th>文物</th><th>指标</th><th>起(UTC)</th><th>止(UTC)</th><th>峰值</th><th>新版状态</th></tr></thead>
+    <tbody>{% for e in diff.events_added %}
+    <tr><td>{{ artifact_map[e.artifact_id].code if e.artifact_id in artifact_map else e.artifact_id }}</td><td>{{ METRIC_LABELS[e.metric] }}</td>
+      <td>{{ fmt_ts(e.start_ts) }}</td><td>{{ fmt_ts(e.end_ts) }}</td>
+      <td>{{ e.peak_value }}</td>
+      <td>{% if e.status == 'closed' %}<span class="badge ok">已关闭</span>{% else %}<span class="badge danger">待处置（需重新处置）</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+  {% if diff.events_common %}
+  <table>
+    <thead><tr><th>文物</th><th>指标</th><th>区间</th><th>旧版状态</th><th>新版状态</th></tr></thead>
+    <tbody>{% for o, n in diff.events_common %}
+    <tr><td>{{ artifact_map[n.artifact_id].code if n.artifact_id in artifact_map else n.artifact_id }}</td><td>{{ METRIC_LABELS[n.metric] }}</td>
+      <td>{{ fmt_ts(n.start_ts) }} ~ {{ fmt_ts(n.end_ts) }}</td>
+      <td>{% if o.status == 'closed' %}<span class="badge ok">已关闭：{{ o.evidence_no }}</span>{% else %}<span class="badge danger">待处置</span>{% endif %}</td>
+      <td>{% if n.status == 'closed' %}<span class="badge ok">已关闭</span>{% else %}<span class="badge danger">待处置（未继承旧版关闭）</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+  {% endif %}
+</section>
+{% else %}
+<p class="muted">至少需要两个评估版本才能比较。请先提交读数生成新版本。</p>
+{% endif %}
+{% endblock %}
